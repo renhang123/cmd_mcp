@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": "system_summary",
+      "description": "Show basic system summary.",
+      "enabled": true,
+      "risk_level": "low",
+      "access": "read_only",
+      "executable": "/usr/bin/uname",
+      "argv_template": [
+        {"literal": "-a"}
+      ],
+      "working_directory": "/",
+      "environment": {
+        "mode": "minimal",
+        "variables": {
+          "LANG": "C"
+        }
+      },
+      "parameters": {},
+      "execution": {
+        "timeout_ms": 3000,
+        "max_output_bytes": 8192,
+        "per_command_limit": 2,
+        "global_limit": 4
+      },
+      "output": {
+        "stdout": "text",
+        "stderr": "text",
+        "truncate": true
+      },
+      "audit": {
+        "event_name": "command.system_summary",
+        "redact_parameters": [],
+        "include_stdout": false,
+        "include_stderr": false,
+        "include_rejection": true
+      }
+    }
+  ]
+}
