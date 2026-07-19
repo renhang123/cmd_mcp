@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${INSTALL_DIR:-/opt/server-shell-mcp}"
 CONFIG_DIR="${CONFIG_DIR:-/etc/server-shell-mcp}"
 CONFIG_MODE="${CONFIG_MODE:-0644}"
-COMMANDS_FILE="${COMMANDS_FILE:-configs/commands.example.json}"
-BINARY_NAME="${BINARY_NAME:-server-shell-mcp}"
-DIST_DIR="${DIST_DIR:-dist}"
+BINARY_FILE="${BINARY_FILE:-$SCRIPT_DIR/server-shell-mcp}"
+COMMANDS_FILE="${COMMANDS_FILE:-$SCRIPT_DIR/commands.json}"
+
+if [[ ! -f "$BINARY_FILE" ]]; then
+  echo "binary not found: $BINARY_FILE" >&2
+  exit 1
+fi
 
 if [[ ! -f "$COMMANDS_FILE" ]]; then
   echo "commands config not found: $COMMANDS_FILE" >&2
   exit 1
 fi
 
-mkdir -p "$DIST_DIR"
-BINARY_PATH="$DIST_DIR/$BINARY_NAME"
-
-echo "Building $BINARY_PATH"
-CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$BINARY_PATH" ./cmd/server
-
 echo "Installing under $INSTALL_DIR and $CONFIG_DIR"
 sudo install -d -m 0755 "$INSTALL_DIR" "$CONFIG_DIR"
-sudo install -m 0755 "$BINARY_PATH" "$INSTALL_DIR/server"
+sudo install -m 0755 "$BINARY_FILE" "$INSTALL_DIR/server"
 sudo install -m "$CONFIG_MODE" "$COMMANDS_FILE" "$CONFIG_DIR/commands.json"
 
 echo "Testing MCP initialize response"
