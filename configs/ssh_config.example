@@ -1,0 +1,11 @@
+Host server-shell-mcp-prod
+  HostName REPLACE_WITH_SERVER_HOST
+  User REPLACE_WITH_SERVER_USER
+  Port 22
+  IdentityFile ~/.ssh/server_shell_mcp_prod
+  IdentitiesOnly yes
+  RequestTTY no
+  BatchMode yes
+  LogLevel ERROR
+  ServerAliveInterval 30
+  ServerAliveCountMax 3

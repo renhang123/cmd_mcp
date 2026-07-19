@@ -1,0 +1,1 @@
+command="/opt/server-shell-mcp/server -commands /etc/server-shell-mcp/commands.json",no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding ssh-ed25519 REPLACE_WITH_PUBLIC_KEY server-shell-mcp-prod

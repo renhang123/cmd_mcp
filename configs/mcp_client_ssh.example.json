@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "server-shell-prod": {
+      "command": "ssh",
+      "args": [
+        "-T",
+        "-o", "BatchMode=yes",
+        "-o", "LogLevel=ERROR",
+        "-o", "ServerAliveInterval=30",
+        "server-shell-mcp-prod",
+        "/opt/server-shell-mcp/server",
+        "-commands",
+        "/etc/server-shell-mcp/commands.json"
+      ]
+    }
+  }
+}
