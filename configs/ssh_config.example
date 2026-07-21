@@ -1,6 +1,6 @@
 Host server-shell-mcp-prod
-  HostName REPLACE_WITH_SERVER_HOST
-  User REPLACE_WITH_SERVER_USER
+  HostName 192.168.3.11
+  User cmd_mcp
   Port 22
   IdentityFile ~/.ssh/server_shell_mcp_prod
   IdentitiesOnly yes
