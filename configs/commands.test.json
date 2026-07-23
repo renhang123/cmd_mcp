@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": "write_hello_test_file",
+      "description": "Run the fixed test.sh script to write hello to test.txt.",
+      "enabled": true,
+      "risk_level": "medium",
+      "access": "state_changing",
+      "executable": "/home/cmd_mcp/test.sh",
+      "argv_template": [],
+      "working_directory": "/home/cmd_mcp",
+      "environment": {
+        "mode": "minimal",
+        "variables": {
+          "LANG": "C"
+        }
+      },
+      "parameters": {},
+      "execution": {
+        "timeout_ms": 3000,
+        "max_output_bytes": 8192,
+        "per_command_limit": 1,
+        "global_limit": 1
+      },
+      "output": {
+        "stdout": "text",
+        "stderr": "text",
+        "truncate": true
+      },
+      "audit": {
+        "event_name": "command.write_hello_test_file",
+        "redact_parameters": [],
+        "include_stdout": false,
+        "include_stderr": false,
+        "include_rejection": true
+      }
+    }
+  ]
+}

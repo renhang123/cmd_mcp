@@ -9,7 +9,7 @@
         "-o", "BatchMode=yes",
         "-o", "LogLevel=ERROR",
         "-o", "ServerAliveInterval=30",
-        "cmd_mcp@192.168.3.11"
+        "cmd_mcp@192.168.3.13"
       ]
     }
   }
