@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"server-shell-mcp/internal/app"
+	"server-shell-mcp/internal/artifact"
 	"server-shell-mcp/internal/domain/command"
 )
 
@@ -14,8 +15,9 @@ type CommandService interface {
 }
 
 type Adapter struct {
-	service CommandService
-	tools   []Tool
+	service         CommandService
+	artifactService *artifact.Service
+	tools           []Tool
 }
 
 type Tool struct {
@@ -33,13 +35,31 @@ type CallRequest struct {
 }
 
 type CallResponse struct {
-	ProtocolOK    bool
-	ProtocolError string
-	Result        *app.CommandResult
+	ProtocolOK     bool
+	ProtocolError  string
+	Result         *app.CommandResult
+	ArtifactResult *artifact.Result
+	IsError        bool
 }
 
 func NewAdapter(service CommandService, tools []Tool) *Adapter {
 	return &Adapter{service: service, tools: append([]Tool(nil), tools...)}
+}
+
+func NewAdapterWithArtifact(service CommandService, artifactService *artifact.Service, tools []Tool) *Adapter {
+	adapter := &Adapter{service: service, artifactService: artifactService, tools: append([]Tool(nil), tools...)}
+	if artifactService != nil {
+		adapter.tools = append(adapter.tools, ToolsFromArtifact(artifactService.Tools())...)
+	}
+	return adapter
+}
+
+func ToolsFromArtifact(specs []artifact.ToolSpec) []Tool {
+	tools := make([]Tool, 0, len(specs))
+	for _, spec := range specs {
+		tools = append(tools, Tool{Name: spec.Name, Description: spec.Description, InputSchema: artifactInputSchema(spec.Name), RiskLevel: spec.RiskLevel})
+	}
+	return tools
 }
 
 func ToolsFromSummaries(summaries []command.Summary) []Tool {
@@ -71,6 +91,10 @@ func (a *Adapter) Call(ctx context.Context, req CallRequest) CallResponse {
 	if !a.hasTool(req.ToolName) {
 		return CallResponse{ProtocolOK: false, ProtocolError: fmt.Sprintf("unknown tool: %s", req.ToolName)}
 	}
+	if a.artifactService != nil && a.artifactService.HasTool(req.ToolName) {
+		result := a.artifactService.Call(ctx, req.RequestID, req.ToolName, req.Arguments, req.Source)
+		return CallResponse{ProtocolOK: true, ArtifactResult: &result, IsError: result.Status != app.StatusSuccess}
+	}
 	result := a.service.Execute(ctx, app.CommandRequest{
 		RequestID: req.RequestID,
 		CommandID: req.ToolName,
@@ -83,7 +107,7 @@ func (a *Adapter) Call(ctx context.Context, req CallRequest) CallResponse {
 			MCPTool:      req.ToolName,
 		},
 	})
-	return CallResponse{ProtocolOK: true, Result: &result}
+	return CallResponse{ProtocolOK: true, Result: &result, IsError: result.Status != app.StatusSuccess}
 }
 
 func (a *Adapter) Explain(req CallRequest) (app.ExplainResult, error) {
@@ -117,6 +141,33 @@ func MVPTools() []Tool {
 		{Name: "tcp_listen_summary", Description: "Show TCP listen summary.", InputSchema: objectSchema(map[string]interface{}{"protocol": enumSchema([]string{"tcp", "tcp4", "tcp6"})}), RiskLevel: "medium"},
 		{Name: "dns_resolution_check", Description: "Check allowlisted DNS resolution.", InputSchema: objectSchema(map[string]interface{}{"hostname": map[string]interface{}{"type": "string"}, "record_type": enumSchema([]string{"A", "AAAA", "CNAME"})}), RiskLevel: "low"},
 		{Name: "http_health_probe", Description: "Probe allowlisted HTTP health target.", InputSchema: objectSchema(map[string]interface{}{"target": enumSchema([]string{}), "timeout_seconds": intSchema(1, 10)}), RiskLevel: "medium"},
+	}
+}
+
+func artifactInputSchema(name string) map[string]interface{} {
+	switch name {
+	case "artifact_upload_begin":
+		return objectSchema(map[string]interface{}{
+			"profile_id":    map[string]interface{}{"type": "string"},
+			"artifact_name": map[string]interface{}{"type": "string"},
+			"size_bytes":    map[string]interface{}{"type": "integer", "minimum": 1},
+			"sha256":        map[string]interface{}{"type": "string", "minLength": 64, "maxLength": 64},
+		})
+	case "artifact_upload_chunk":
+		return objectSchema(map[string]interface{}{
+			"upload_id":   map[string]interface{}{"type": "string"},
+			"offset":      map[string]interface{}{"type": "integer", "minimum": 0},
+			"data_base64": map[string]interface{}{"type": "string"},
+		})
+	case "artifact_upload_commit", "artifact_upload_abort":
+		return objectSchema(map[string]interface{}{"upload_id": map[string]interface{}{"type": "string"}})
+	case "deploy_artifact":
+		return objectSchema(map[string]interface{}{
+			"profile_id":  map[string]interface{}{"type": "string"},
+			"artifact_id": map[string]interface{}{"type": "string"},
+		})
+	default:
+		return objectSchema(nil)
 	}
 }
 

@@ -46,6 +46,7 @@ func NewStdioServer(adapter *Adapter, in io.Reader, out io.Writer) *StdioServer 
 
 func (s *StdioServer) Serve(ctx context.Context) error {
 	scanner := bufio.NewScanner(s.in)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	writer := bufio.NewWriter(s.out)
 	for scanner.Scan() {
 		select {
@@ -114,8 +115,8 @@ func (s *StdioServer) handleToolCall(ctx context.Context, req rpcRequest) *rpcRe
 		return errorResponse(req.ID, -32602, call.ProtocolError)
 	}
 	return &rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]interface{}{
-		"content": []map[string]interface{}{{"type": "text", "text": resultText(call.Result)}},
-		"isError": call.Result.Status != "success",
+		"content": []map[string]interface{}{{"type": "text", "text": callResultText(call)}},
+		"isError": call.IsError,
 	}}
 }
 
@@ -130,6 +131,13 @@ func (s *StdioServer) mcpTools() []map[string]interface{} {
 		})
 	}
 	return out
+}
+
+func callResultText(call CallResponse) string {
+	if call.ArtifactResult != nil {
+		return resultText(call.ArtifactResult)
+	}
+	return resultText(call.Result)
 }
 
 func resultText(result interface{}) string {

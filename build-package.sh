@@ -33,9 +33,15 @@ if [[ -n "$MCP_PUBLIC_KEY_FILE" ]]; then
   cp "$MCP_PUBLIC_KEY_FILE" "$PACKAGE_DIR/authorized_key.pub"
 fi
 cp deploy-remote.sh "$PACKAGE_DIR/install.sh"
+if [[ -f deploy-server-shell-mcp-test.sh ]]; then
+  cp deploy-server-shell-mcp-test.sh "$PACKAGE_DIR/deploy-server-shell-mcp-test.sh"
+fi
 chmod +x "$PACKAGE_DIR/install.sh" "$PACKAGE_DIR/server-shell-mcp"
+if [[ -f "$PACKAGE_DIR/deploy-server-shell-mcp-test.sh" ]]; then
+  chmod +x "$PACKAGE_DIR/deploy-server-shell-mcp-test.sh"
+fi
 
-tar -czf "$ARCHIVE" -C "$DIST_DIR" "$(basename "$PACKAGE_DIR")"
+COPYFILE_DISABLE=1 tar --no-xattrs -czf "$ARCHIVE" -C "$DIST_DIR" "$(basename "$PACKAGE_DIR")"
 
 echo "Package created: $ARCHIVE"
 echo "Install on server: tar -xzf $(basename "$ARCHIVE") && cd $(basename "$PACKAGE_DIR") && ./install.sh"

@@ -5,15 +5,25 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
+	"server-shell-mcp/internal/artifact"
 	"server-shell-mcp/internal/domain/command"
 )
 
 type File struct {
-	Version  int             `json:"version"`
-	Commands []CommandConfig `json:"commands"`
+	Version        int                      `json:"version"`
+	Commands       []CommandConfig          `json:"commands"`
+	ArtifactStore  artifact.StoreConfig     `json:"artifact_store"`
+	DeployProfiles []artifact.DeployProfile `json:"deploy_profiles"`
+}
+
+type RuntimeConfig struct {
+	Commands       []command.CommandDefinition
+	ArtifactStore  artifact.StoreConfig
+	DeployProfiles []artifact.DeployProfile
 }
 
 type CommandConfig struct {
@@ -128,22 +138,46 @@ func (e ErrorList) Error() string {
 }
 
 func LoadFile(path string) ([]command.CommandDefinition, error) {
-	data, err := ioutil.ReadFile(path)
+	runtime, err := LoadRuntimeFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return LoadBytes(data)
+	return runtime.Commands, nil
+}
+
+func LoadRuntimeFile(path string) (RuntimeConfig, error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	return LoadRuntimeBytes(data)
 }
 
 func LoadBytes(data []byte) ([]command.CommandDefinition, error) {
-	var file File
-	if err := json.Unmarshal(data, &file); err != nil {
+	runtime, err := LoadRuntimeBytes(data)
+	if err != nil {
 		return nil, err
 	}
-	return Build(file)
+	return runtime.Commands, nil
+}
+
+func LoadRuntimeBytes(data []byte) (RuntimeConfig, error) {
+	var file File
+	if err := json.Unmarshal(data, &file); err != nil {
+		return RuntimeConfig{}, err
+	}
+	return BuildRuntime(file)
 }
 
 func Build(file File) ([]command.CommandDefinition, error) {
+	runtime, err := BuildRuntime(file)
+	if err != nil {
+		return nil, err
+	}
+	return runtime.Commands, nil
+}
+
+func BuildRuntime(file File) (RuntimeConfig, error) {
 	defs := make([]command.CommandDefinition, 0, len(file.Commands))
 	var errs ErrorList
 	if file.Version != 1 {
@@ -160,10 +194,80 @@ func Build(file File) ([]command.CommandDefinition, error) {
 		errs = append(errs, cmdErrs...)
 		defs = append(defs, def)
 	}
+	errs = append(errs, validateArtifactConfig(file.ArtifactStore, file.DeployProfiles, defs)...)
 	if len(errs) > 0 {
-		return nil, errs
+		return RuntimeConfig{}, errs
 	}
-	return defs, nil
+	return RuntimeConfig{
+		Commands:       defs,
+		ArtifactStore:  file.ArtifactStore,
+		DeployProfiles: append([]artifact.DeployProfile(nil), file.DeployProfiles...),
+	}, nil
+}
+
+func validateArtifactConfig(store artifact.StoreConfig, profiles []artifact.DeployProfile, defs []command.CommandDefinition) ErrorList {
+	var errs ErrorList
+	if !store.Enabled {
+		if len(profiles) > 0 {
+			errs = append(errs, Error{Field: "deploy_profiles", Code: "config.artifact_store_disabled", Message: "deploy profiles require artifact store to be enabled"})
+		}
+		return errs
+	}
+	if store.RootDirectory == "" {
+		errs = append(errs, Error{Field: "artifact_store.root_directory", Code: "config.required", Message: "artifact root directory is required"})
+	} else if !filepath.IsAbs(store.RootDirectory) {
+		errs = append(errs, Error{Field: "artifact_store.root_directory", Code: "config.absolute_path_required", Message: "artifact root directory must be absolute"})
+	}
+	if store.MaxUploadBytes <= 0 {
+		errs = append(errs, Error{Field: "artifact_store.max_upload_bytes", Code: "config.positive_required", Message: "max upload bytes must be positive"})
+	}
+	if store.MaxChunkBytes <= 0 {
+		errs = append(errs, Error{Field: "artifact_store.max_chunk_bytes", Code: "config.positive_required", Message: "max chunk bytes must be positive"})
+	}
+	if store.MaxUploadBytes > 0 && store.MaxChunkBytes > store.MaxUploadBytes {
+		errs = append(errs, Error{Field: "artifact_store.max_chunk_bytes", Code: "config.chunk_too_large", Message: "max chunk bytes cannot exceed max upload bytes"})
+	}
+	commandIDs := map[string]command.CommandDefinition{}
+	for _, def := range defs {
+		commandIDs[def.ID] = def
+	}
+	seen := map[string]bool{}
+	profileIDPattern := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
+	for i, profile := range profiles {
+		field := fmt.Sprintf("deploy_profiles[%d]", i)
+		if profile.ID == "" {
+			errs = append(errs, Error{Field: field + ".id", Code: "config.required", Message: "profile id is required"})
+		} else if !profileIDPattern.MatchString(profile.ID) {
+			errs = append(errs, Error{Field: field + ".id", Code: "config.invalid_id", Message: "profile id format is invalid"})
+		}
+		if seen[profile.ID] {
+			errs = append(errs, Error{Field: field + ".id", Code: "config.duplicate_id", Message: "duplicate deploy profile id"})
+		}
+		seen[profile.ID] = true
+		if profile.ArtifactNamePattern == "" {
+			errs = append(errs, Error{Field: field + ".artifact_name_pattern", Code: "config.required", Message: "artifact name pattern is required"})
+		} else if _, err := regexp.Compile(profile.ArtifactNamePattern); err != nil {
+			errs = append(errs, Error{Field: field + ".artifact_name_pattern", Code: "config.invalid_pattern", Message: "artifact name pattern is invalid"})
+		}
+		if profile.DeployCommandID == "" {
+			errs = append(errs, Error{Field: field + ".deploy_command_id", Code: "config.required", Message: "deploy command id is required"})
+			continue
+		}
+		def, ok := commandIDs[profile.DeployCommandID]
+		if !ok {
+			errs = append(errs, Error{Field: field + ".deploy_command_id", Code: "config.unknown_command", Message: "deploy command is not registered"})
+			continue
+		}
+		param, ok := def.Parameters["artifact_path"]
+		if !ok {
+			errs = append(errs, Error{Field: field + ".deploy_command_id", Code: "config.artifact_path_required", Message: "deploy command must define artifact_path parameter"})
+			continue
+		}
+		if param.Type != command.ParameterTypePath {
+			errs = append(errs, Error{Field: field + ".deploy_command_id", Code: "config.artifact_path_type", Message: "artifact_path must be a path parameter"})
+		}
+	}
+	return errs
 }
 
 func buildCommand(cfg CommandConfig, field string) (command.CommandDefinition, ErrorList) {
