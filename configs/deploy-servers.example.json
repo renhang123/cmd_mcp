@@ -1,0 +1,12 @@
+{
+  "servers": [
+    {
+      "name": "vm124",
+      "host": "192.168.3.13",
+      "user": "cmd_mcp",
+      "ssh_key": "~/.ssh/server_shell_mcp_prod",
+      "profile_id": "antd-pri-dev",
+      "artifact": "~/Downloads/mixcall__quality-0401.zip"
+    }
+  ]
+}

@@ -259,12 +259,12 @@ func (s *Service) commit(requestID string, toolName string, args map[string]inte
 		_ = os.Remove(session.TempPath)
 		return rejected(requestID, toolName, app.ErrorValidation, "artifact sha256 does not match.")
 	}
-	artifactID := strings.TrimSuffix(session.ArtifactName, ".tar.gz") + "-" + digest[:12]
+	artifactID := strings.TrimSuffix(session.ArtifactName, artifactExtension(session.ArtifactName)) + "-" + digest[:12]
 	if !validArtifactID(artifactID) {
 		_ = os.Remove(session.TempPath)
 		return rejected(requestID, toolName, app.ErrorValidation, "artifact id format is invalid.")
 	}
-	committedPath := filepath.Join(s.store.RootDirectory, "committed", artifactID+".tar.gz")
+	committedPath := filepath.Join(s.store.RootDirectory, "committed", artifactID+artifactExtension(session.ArtifactName))
 	manifestPath := filepath.Join(s.store.RootDirectory, "committed", artifactID+".json")
 	if _, err := os.Stat(committedPath); err == nil {
 		_ = os.Remove(session.TempPath)
@@ -316,20 +316,24 @@ func (s *Service) deploy(ctx context.Context, requestID string, toolName string,
 	if !ok {
 		return rejected(requestID, toolName, app.ErrorValidation, "profile_id is not allowed.")
 	}
-	artifactPath := filepath.Join(s.store.RootDirectory, "committed", artifactID+".tar.gz")
 	manifestPath := filepath.Join(s.store.RootDirectory, "committed", artifactID+".json")
-	if !insideRoot(artifactPath, filepath.Join(s.store.RootDirectory, "committed")) {
-		return rejected(requestID, toolName, app.ErrorPolicyDenied, "artifact path is outside committed root.")
-	}
-	if _, err := os.Stat(artifactPath); err != nil {
-		return rejected(requestID, toolName, app.ErrorNotFound, "artifact was not found.")
-	}
 	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		return rejected(requestID, toolName, app.ErrorValidation, "artifact manifest is missing or invalid.")
 	}
 	if manifest.ProfileID != profileID {
 		return rejected(requestID, toolName, app.ErrorPolicyDenied, "artifact is not committed for this profile.")
+	}
+	ext := artifactExtension(manifest.ArtifactName)
+	if ext == "" {
+		return rejected(requestID, toolName, app.ErrorValidation, "artifact name format is invalid.")
+	}
+	artifactPath := filepath.Join(s.store.RootDirectory, "committed", artifactID+ext)
+	if !insideRoot(artifactPath, filepath.Join(s.store.RootDirectory, "committed")) {
+		return rejected(requestID, toolName, app.ErrorPolicyDenied, "artifact path is outside committed root.")
+	}
+	if _, err := os.Stat(artifactPath); err != nil {
+		return rejected(requestID, toolName, app.ErrorNotFound, "artifact was not found.")
 	}
 	result := s.commands.Execute(ctx, app.CommandRequest{RequestID: requestID, CommandID: profile.DeployCommandID, Arguments: map[string]interface{}{"artifact_path": artifactPath}, Source: app.SourceSummary{ClientIDHash: source.ClientIDHash, UserIDHash: source.UserIDHash, RemoteHash: source.RemoteHash, Transport: source.Transport, MCPTool: toolName}})
 	status := result.Status
@@ -429,7 +433,18 @@ func validArtifactID(value string) bool {
 }
 
 func safeArtifactName(value string) bool {
-	return validArtifactID(value) && strings.HasSuffix(value, ".tar.gz")
+	return validArtifactID(value) && artifactExtension(value) != ""
+}
+
+// artifactExtension returns the supported archive extension of name,
+// or "" when the name does not end in a supported extension.
+func artifactExtension(name string) string {
+	for _, ext := range []string{".tar.gz", ".zip"} {
+		if strings.HasSuffix(name, ext) {
+			return ext
+		}
+	}
+	return ""
 }
 
 func insideRoot(path string, root string) bool {
