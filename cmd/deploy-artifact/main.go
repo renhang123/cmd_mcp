@@ -114,7 +114,7 @@ type mcpSession struct {
 func main() {
 	configPath := flag.String("config", "deploy-servers.json", "path to the deploy servers config file")
 	serverName := flag.String("server", "", "server name from the config file (required)")
-	zipOverride := flag.String("zip", "", "override the artifact path configured for the server")
+	artifactOverride := flag.String("artifact", "", "override the artifact path configured for the server")
 	flag.Parse()
 
 	if *serverName == "" {
@@ -128,25 +128,25 @@ func main() {
 		fatal("%v", err)
 	}
 
-	zipPath := server.Artifact
-	if *zipOverride != "" {
-		zipPath = *zipOverride
+	artifactPath := server.Artifact
+	if *artifactOverride != "" {
+		artifactPath = *artifactOverride
 	}
-	if zipPath == "" {
-		fatal("no artifact configured for server %q; pass -zip", server.Name)
+	if artifactPath == "" {
+		fatal("no artifact configured for server %q; pass -artifact", server.Name)
 	}
-	zipPath = expandHome(zipPath)
+	artifactPath = expandHome(artifactPath)
 
-	info, err := os.Stat(zipPath)
+	info, err := os.Stat(artifactPath)
 	if err != nil {
 		fatal("stat artifact: %v", err)
 	}
-	digest, err := fileSHA256(zipPath)
+	digest, err := fileSHA256(artifactPath)
 	if err != nil {
 		fatal("hash artifact: %v", err)
 	}
-	artifactName := filepath.Base(zipPath)
-	fmt.Printf("artifact: %s (%d bytes, sha256 %s)\n", zipPath, info.Size(), digest)
+	artifactName := filepath.Base(artifactPath)
+	fmt.Printf("artifact: %s (%d bytes, sha256 %s)\n", artifactPath, info.Size(), digest)
 
 	session, err := dial(server)
 	if err != nil {
@@ -159,12 +159,12 @@ func main() {
 	}
 	fmt.Printf("connected: %s@%s\n", server.User, server.Host)
 
-	if err := runDeploy(session, server, zipPath, artifactName, info.Size(), digest); err != nil {
+	if err := runDeploy(session, server, artifactPath, artifactName, info.Size(), digest); err != nil {
 		fatal("%v", err)
 	}
 }
 
-func runDeploy(session *mcpSession, server serverEntry, zipPath, artifactName string, size int64, digest string) error {
+func runDeploy(session *mcpSession, server serverEntry, artifactPath, artifactName string, size int64, digest string) error {
 	begin, err := session.callTool("artifact_upload_begin", map[string]interface{}{
 		"profile_id":    server.ProfileID,
 		"artifact_name": artifactName,
@@ -191,7 +191,7 @@ func runDeploy(session *mcpSession, server serverEntry, zipPath, artifactName st
 		}
 	}()
 
-	if err := uploadChunks(session, zipPath, uploadID, size, maxChunk); err != nil {
+	if err := uploadChunks(session, artifactPath, uploadID, size, maxChunk); err != nil {
 		return err
 	}
 
@@ -228,8 +228,8 @@ func runDeploy(session *mcpSession, server serverEntry, zipPath, artifactName st
 	return nil
 }
 
-func uploadChunks(session *mcpSession, zipPath, uploadID string, size, maxChunk int64) error {
-	file, err := os.Open(zipPath)
+func uploadChunks(session *mcpSession, artifactPath, uploadID string, size, maxChunk int64) error {
+	file, err := os.Open(artifactPath)
 	if err != nil {
 		return fmt.Errorf("open artifact: %v", err)
 	}
