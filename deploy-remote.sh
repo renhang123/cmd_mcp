@@ -10,6 +10,7 @@ BINARY_FILE="${BINARY_FILE:-$SCRIPT_DIR/server-shell-mcp}"
 COMMANDS_FILE="${COMMANDS_FILE:-$SCRIPT_DIR/commands.json}"
 TEST_DEPLOY_HELPER="${TEST_DEPLOY_HELPER:-$SCRIPT_DIR/deploy-server-shell-mcp-test.sh}"
 SCRIPTS_DIR="${SCRIPTS_DIR:-$SCRIPT_DIR/scripts}"
+SUDOERS_FILE="${SUDOERS_FILE:-$SCRIPTS_DIR/sudoers.server-shell-mcp}"
 MCP_PUBLIC_KEY="${MCP_PUBLIC_KEY:-}"
 MCP_PUBLIC_KEY_FILE="${MCP_PUBLIC_KEY_FILE:-}"
 FORCED_COMMAND="${INSTALL_DIR}/server -commands ${CONFIG_DIR}/commands.json"
@@ -83,6 +84,10 @@ if [[ -d "$SCRIPTS_DIR" ]]; then
     [[ -f "$script" ]] || continue
     sudo install -m 0755 "$script" "$INSTALL_DIR/scripts/$(basename "$script")"
   done
+fi
+if [[ -f "$SUDOERS_FILE" ]]; then
+  sudo install -m 0440 "$SUDOERS_FILE" /etc/sudoers.d/server-shell-mcp
+  sudo visudo -cf /etc/sudoers.d/server-shell-mcp
 fi
 sudo install -m "$CONFIG_MODE" "$COMMANDS_FILE" "$CONFIG_DIR/commands.json"
 if [[ -f "$TEST_DEPLOY_HELPER" ]]; then

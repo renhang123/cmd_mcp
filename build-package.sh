@@ -33,9 +33,14 @@ if [[ -n "$MCP_PUBLIC_KEY_FILE" ]]; then
   cp "$MCP_PUBLIC_KEY_FILE" "$PACKAGE_DIR/authorized_key.pub"
 fi
 cp deploy-remote.sh "$PACKAGE_DIR/install.sh"
-if compgen -G "scripts/*.sh" >/dev/null; then
+if compgen -G "scripts/*.sh" >/dev/null || compgen -G "scripts/sudoers.*" >/dev/null; then
   mkdir -p "$PACKAGE_DIR/scripts"
+fi
+if compgen -G "scripts/*.sh" >/dev/null; then
   cp scripts/*.sh "$PACKAGE_DIR/scripts/"
+fi
+if compgen -G "scripts/sudoers.*" >/dev/null; then
+  cp scripts/sudoers.* "$PACKAGE_DIR/scripts/"
 fi
 if [[ -f deploy-server-shell-mcp-test.sh ]]; then
   cp deploy-server-shell-mcp-test.sh "$PACKAGE_DIR/deploy-server-shell-mcp-test.sh"
