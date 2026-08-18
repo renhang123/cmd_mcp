@@ -145,8 +145,11 @@ func main() {
 	if err != nil {
 		fatal("hash artifact: %v", err)
 	}
-	artifactName := filepath.Base(artifactPath)
+	artifactName := mcpArtifactName(filepath.Base(artifactPath))
 	fmt.Printf("artifact: %s (%d bytes, sha256 %s)\n", artifactPath, info.Size(), digest)
+	if artifactName != filepath.Base(artifactPath) {
+		fmt.Printf("mcp artifact name: %s\n", artifactName)
+	}
 
 	session, err := dial(server)
 	if err != nil {
@@ -196,15 +199,24 @@ func runDeploy(session *mcpSession, server serverEntry, artifactPath, artifactNa
 	}
 
 	commit, err := session.callTool("artifact_upload_commit", map[string]interface{}{"upload_id": uploadID})
-	if err != nil {
+	artifactID := ""
+	if err != nil && strings.Contains(err.Error(), "artifact is already committed") {
+		uploaded = true
+		artifactID = committedArtifactID(artifactName, digest)
+		fmt.Printf("already committed: %s\n", artifactID)
+	} else if err != nil {
 		return fmt.Errorf("upload commit: %v", err)
 	}
 	uploaded = true
-	artifactID, _ := commit.Data["artifact_id"].(string)
+	if artifactID == "" {
+		artifactID, _ = commit.Data["artifact_id"].(string)
+	}
 	if artifactID == "" {
 		return fmt.Errorf("upload commit: server did not return artifact_id")
 	}
-	fmt.Printf("committed: %s\n", artifactID)
+	if commit != nil {
+		fmt.Printf("committed: %s\n", artifactID)
+	}
 
 	deploy, err := session.callTool("deploy_artifact", map[string]interface{}{
 		"profile_id":  server.ProfileID,
@@ -226,6 +238,26 @@ func runDeploy(session *mcpSession, server serverEntry, artifactPath, artifactNa
 	}
 	fmt.Println("deploy finished")
 	return nil
+}
+
+func mcpArtifactName(name string) string {
+	if strings.HasSuffix(name, ".tgz") {
+		return strings.TrimSuffix(name, ".tgz") + ".tar.gz"
+	}
+	return name
+}
+
+func committedArtifactID(artifactName, digest string) string {
+	return strings.TrimSuffix(artifactName, archiveExtension(artifactName)) + "-" + digest[:12]
+}
+
+func archiveExtension(name string) string {
+	for _, ext := range []string{".tar.gz", ".zip"} {
+		if strings.HasSuffix(name, ext) {
+			return ext
+		}
+	}
+	return filepath.Ext(name)
 }
 
 func uploadChunks(session *mcpSession, artifactPath, uploadID string, size, maxChunk int64) error {
