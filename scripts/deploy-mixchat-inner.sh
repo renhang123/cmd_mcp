@@ -69,6 +69,11 @@ restart_containers() {
   docker restart "${RESTART_CONTAINERS[@]}"
 }
 
+run_migrations() {
+  command -v docker >/dev/null 2>&1 || fail "docker is not installed"
+  docker exec mixchat-rails-1 bundle exec rails db:migrate
+}
+
 stage_artifact() {
   local artifact_path="$1"
   local src="$2"
@@ -206,6 +211,16 @@ if ! restart_output="$(restart_containers 2>&1)"; then
   restart_output="restart warning: ${restart_output}"
 fi
 
+migrate_output=""
+if [[ "$restart_output" != restart\ warning:* ]]; then
+  if ! migrate_output="$(run_migrations 2>&1)"; then
+    printf '%s\n' "$migrate_output" >&2
+    exit 1
+  fi
+else
+  migrate_output="migration skipped because container restart failed"
+fi
+
 deployed_paths=()
 if [[ "$DEPLOY_APP" == "1" ]]; then
   deployed_paths+=("$MIXCHAT_DIR/app")
@@ -225,3 +240,5 @@ else
   echo "restarted: ${RESTART_CONTAINERS[*]}"
   printf '%s\n' "$restart_output"
 fi
+echo "migrated: mixchat-rails-1"
+printf '%s\n' "$migrate_output"
