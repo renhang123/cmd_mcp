@@ -13,6 +13,7 @@ H5_DIR="$MIXCHAT_DIR/h5"
 BACKUP_ROOT="$HTML_ROOT/backup"
 WEB_OWNER="${WEB_OWNER:-root:root}"
 RESTART_CONTAINERS=(mixchat-rails-1 mixchat-sidekiq-1 mixchat-mixchat_h5-1 mixchat-nginx-1)
+H5_DEPLOY_DIRS=()
 
 fail() {
   echo "$1" >&2
@@ -71,25 +72,28 @@ restart_containers() {
 stage_artifact() {
   local artifact_path="$1"
   local src="$2"
-  local has_h5_dirs=1
+  local h5_dirs=()
 
-  if [[ -d "$src/.next" && -d "$src/public" && -d "$src/node_modules" ]]; then
-    has_h5_dirs=0
-  fi
+  for d in .next public node_modules; do
+    if [[ -d "$src/$d" ]]; then
+      h5_dirs+=("$d")
+    fi
+  done
 
-  if [[ "$has_h5_dirs" == "0" ]]; then
+  if (( ${#h5_dirs[@]} > 0 )); then
     [[ "$DEPLOY_H5" == "0" ]] || fail "multiple h5 artifacts were provided"
     DEPLOY_H5=1
     mkdir -p "$STAGING_DIR/h5"
     empty_dir "$STAGING_DIR/h5"
-    for d in .next public node_modules; do
+    H5_DEPLOY_DIRS=("${h5_dirs[@]}")
+    for d in "${H5_DEPLOY_DIRS[@]}"; do
       cp -a "$src/$d" "$STAGING_DIR/h5/$d"
     done
     return
   fi
 
   if looks_like_h5_artifact "$artifact_path"; then
-    fail "h5 artifact missing directory: .next, public, or node_modules"
+    fail "h5 artifact missing deployable directory: .next, public, or node_modules"
   fi
 
   [[ "$DEPLOY_APP" == "0" ]] || fail "multiple app artifacts were provided"
@@ -140,7 +144,7 @@ rollback() {
     fi
   fi
   if [[ "$DEPLOY_H5" == "1" ]]; then
-    for d in .next public node_modules; do
+    for d in "${H5_DEPLOY_DIRS[@]}"; do
       rm -rf "${H5_DIR:?}/$d"
       if [[ -d "$BACKUP_DIR/h5/$d" ]]; then
         mkdir -p "$H5_DIR"
@@ -156,7 +160,7 @@ if [[ "$DEPLOY_APP" == "1" && -e "$MIXCHAT_DIR/app" ]]; then
 fi
 if [[ "$DEPLOY_H5" == "1" ]]; then
   mkdir -p "$H5_DIR" "$BACKUP_DIR/h5"
-  for d in .next public node_modules; do
+  for d in "${H5_DEPLOY_DIRS[@]}"; do
     if [[ -e "$H5_DIR/$d" ]]; then
       mv "$H5_DIR/$d" "$BACKUP_DIR/h5/$d"
     fi
@@ -175,7 +179,7 @@ if [[ "$DEPLOY_APP" == "1" ]]; then
   fi
 fi
 if [[ "$deploy_failed" == "0" && "$DEPLOY_H5" == "1" ]]; then
-  for d in .next public node_modules; do
+  for d in "${H5_DEPLOY_DIRS[@]}"; do
     if ! cp -a "$STAGING_DIR/h5/$d" "$H5_DIR/$d"; then
       deploy_failed=1
       break
@@ -192,7 +196,9 @@ if [[ "$DEPLOY_APP" == "1" ]]; then
   chown -R "$WEB_OWNER" "$MIXCHAT_DIR/app" 2>/dev/null || true
 fi
 if [[ "$DEPLOY_H5" == "1" ]]; then
-  chown -R "$WEB_OWNER" "$H5_DIR/.next" "$H5_DIR/public" "$H5_DIR/node_modules" 2>/dev/null || true
+  for d in "${H5_DEPLOY_DIRS[@]}"; do
+    chown -R "$WEB_OWNER" "$H5_DIR/$d" 2>/dev/null || true
+  done
 fi
 
 restart_output=""
@@ -205,7 +211,9 @@ if [[ "$DEPLOY_APP" == "1" ]]; then
   deployed_paths+=("$MIXCHAT_DIR/app")
 fi
 if [[ "$DEPLOY_H5" == "1" ]]; then
-  deployed_paths+=("$H5_DIR/.next" "$H5_DIR/public" "$H5_DIR/node_modules")
+  for d in "${H5_DEPLOY_DIRS[@]}"; do
+    deployed_paths+=("$H5_DIR/$d")
+  done
 fi
 
 echo "staging: $STAGING_DIR"
