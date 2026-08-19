@@ -79,13 +79,14 @@ stage_artifact() {
   local src="$2"
   local h5_dirs=()
 
-  for d in .next public node_modules; do
-    if [[ -d "$src/$d" ]]; then
-      h5_dirs+=("$d")
-    fi
-  done
+  if looks_like_h5_artifact "$artifact_path"; then
+    for d in .next public node_modules; do
+      if [[ -d "$src/$d" ]]; then
+        h5_dirs+=("$d")
+      fi
+    done
+    (( ${#h5_dirs[@]} > 0 )) || fail "h5 artifact missing deployable directory: .next, public, or node_modules"
 
-  if (( ${#h5_dirs[@]} > 0 )); then
     [[ "$DEPLOY_H5" == "0" ]] || fail "multiple h5 artifacts were provided"
     DEPLOY_H5=1
     mkdir -p "$STAGING_DIR/h5"
@@ -95,10 +96,6 @@ stage_artifact() {
       cp -a "$src/$d" "$STAGING_DIR/h5/$d"
     done
     return
-  fi
-
-  if looks_like_h5_artifact "$artifact_path"; then
-    fail "h5 artifact missing deployable directory: .next, public, or node_modules"
   fi
 
   [[ "$DEPLOY_APP" == "0" ]] || fail "multiple app artifacts were provided"
