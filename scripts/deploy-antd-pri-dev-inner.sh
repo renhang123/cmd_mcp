@@ -15,7 +15,7 @@ ARTIFACT_ROOT="/home/cmd_mcp/artifacts/committed"
 HTML_ROOT="/var/www/html"
 ADMIN_DIR="$HTML_ROOT/admin"
 BACKUP_ROOT="$HTML_ROOT/backup"
-WEB_OWNER="${WEB_OWNER:-root:root}"
+WEB_OWNER="${WEB_OWNER:-asterisk:asterisk}"
 
 fail() {
   echo "$1" >&2
