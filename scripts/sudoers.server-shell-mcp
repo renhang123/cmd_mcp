@@ -1,3 +1,4 @@
 cmd_mcp ALL=(root) NOPASSWD: /opt/server-shell-mcp/scripts/deploy-antd-pri-dev-inner.sh
+cmd_mcp ALL=(root) NOPASSWD: /opt/server-shell-mcp/scripts/deploy-ari-bot-inner.sh
 cmd_mcp ALL=(root) NOPASSWD: /opt/server-shell-mcp/scripts/deploy-mixbot-inner.sh
 cmd_mcp ALL=(root) NOPASSWD: /opt/server-shell-mcp/scripts/deploy-mixchat-inner.sh
