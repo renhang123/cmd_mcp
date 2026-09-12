@@ -9,6 +9,10 @@
 #   4. Replace /home/api/mixbot_api/App (ownership preserved from the old App).
 #   5. Restart: php easyswoole server stop -force && php easyswoole server start -d,
 #      verify with server status; roll back the old App if it fails.
+#
+# 注意: php 命令的 stdout/stderr 一律重定向到日志文件并 </dev/null，
+#       否则 `server start -d` 的守护进程会持有调用方（MCP）的输出管道，
+#       导致 MCP 命令迟迟等不到 EOF 而挂住。
 set -euo pipefail
 
 ARTIFACT_PATH="${1:-}"
@@ -17,6 +21,7 @@ APP_ROOT="/home/api/mixbot_api"
 APP_DIR="$APP_ROOT/App"
 BACKUP_ROOT="/home/api/backup"
 PHP_BIN="${PHP_BIN:-php}"
+LOG_FILE="${LOG_FILE:-/tmp/bot-api-deploy-$(date +%Y%m%d_%H%M%S).log}"
 
 fail() {
   echo "$1" >&2
@@ -29,16 +34,36 @@ empty_dir() {
   rm -rf "$dir"/* "$dir"/.[!.]* "$dir"/..?*
 }
 
+# 在 $APP_ROOT 下执行 php easyswoole 子命令，输出写日志，避免守护进程占用管道。
+php_call() {
+  local label="$1"
+  shift
+  echo "== $label =="
+  local before after
+  before="$(wc -l <"$LOG_FILE" 2>/dev/null || echo 0)"
+  local rc=0
+  if command -v timeout >/dev/null 2>&1; then
+    ( cd "$APP_ROOT" && timeout 120 "$PHP_BIN" "$@" ) </dev/null >>"$LOG_FILE" 2>&1 || rc=$?
+  else
+    ( cd "$APP_ROOT" && "$PHP_BIN" "$@" ) </dev/null >>"$LOG_FILE" 2>&1 || rc=$?
+  fi
+  after="$(wc -l <"$LOG_FILE" 2>/dev/null || echo 0)"
+  if [ "$after" -gt "$before" ]; then
+    tail -n +$((before + 1)) "$LOG_FILE"
+  fi
+  return "$rc"
+}
+
 server_stop() {
-  ( cd "$APP_ROOT" && "$PHP_BIN" easyswoole server stop -force )
+  php_call "停止服务: $PHP_BIN easyswoole server stop -force" easyswoole server stop -force
 }
 
 server_start() {
-  ( cd "$APP_ROOT" && "$PHP_BIN" easyswoole server start -d )
+  php_call "启动服务: $PHP_BIN easyswoole server start -d" easyswoole server start -d
 }
 
 server_status() {
-  ( cd "$APP_ROOT" && "$PHP_BIN" easyswoole server status )
+  php_call "校验服务状态: $PHP_BIN easyswoole server status" easyswoole server status
 }
 
 [[ -n "$ARTIFACT_PATH" ]] || fail "artifact path is required"
@@ -51,6 +76,8 @@ command -v tar >/dev/null 2>&1 || fail "tar is not installed"
 
 [[ -d "$APP_ROOT" ]] || fail "app directory not found: $APP_ROOT"
 [[ -d "$APP_DIR" ]] || fail "App directory not found: $APP_DIR"
+
+: >"$LOG_FILE"
 
 WORK_DIR="$(mktemp -d /tmp/bot-api.XXXXXX)"
 cleanup() {
@@ -74,7 +101,6 @@ if [[ ! -d "$NEW_APP" ]]; then
   NEW_APP="$(find "$SRC" -maxdepth 2 -type d -name App -print -quit)"
 fi
 [[ -n "$NEW_APP" && -d "$NEW_APP" ]] || fail "artifact missing App directory"
-[[ -f "$NEW_APP/../composer.json" ]] || echo "warning: artifact has no composer.json next to App" >&2
 
 TS="$(date +%Y%m%d_%H%M%S)"
 BACKUP_DIR="$BACKUP_ROOT/bot_api_$TS"
@@ -104,31 +130,24 @@ rollback() {
 mv "$APP_DIR" "$BACKUP_DIR/App"
 mv "$STAGED_APP" "$APP_DIR"
 
-echo "== 停止服务: $PHP_BIN easyswoole server stop -force =="
-if ! stop_output="$(server_stop 2>&1)"; then
-  echo "stop 返回非零（可能是服务未运行），继续：" >&2
-  printf '%s\n' "$stop_output" >&2
+if ! server_stop; then
+  echo "stop 返回非零（服务可能未运行），继续启动" >&2
 fi
-printf '%s\n' "$stop_output" || true
 
-echo "== 启动服务: $PHP_BIN easyswoole server start -d =="
-if ! start_output="$(server_start 2>&1)"; then
-  printf '%s\n' "$start_output" >&2
+if ! server_start; then
+  echo "server start 失败，回滚旧 App" >&2
   rollback
   exit 1
 fi
-printf '%s\n' "$start_output"
 
-echo "== 校验服务状态: $PHP_BIN easyswoole server status =="
-if ! status_output="$(server_status 2>&1)"; then
-  printf '%s\n' "$status_output" >&2
+if ! server_status; then
   echo "server status 校验失败，回滚旧 App" >&2
   rollback
   exit 1
 fi
-printf '%s\n' "$status_output"
 
 echo "artifact: $ARTIFACT_PATH"
 echo "backup:  $BACKUP_DIR"
 echo "deployed: $APP_DIR"
 echo "restarted: $PHP_BIN easyswoole server stop -force / start -d"
+echo "log: $LOG_FILE"
