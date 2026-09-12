@@ -66,6 +66,44 @@ server_status() {
   php_call "校验服务状态: $PHP_BIN easyswoole server status" easyswoole server status
 }
 
+# 单次 status 调用：输出写日志并返回本次新增内容。
+# 不依赖退出码 —— EasySwoole 的 status 即使打印 "connect to server fail" 也返回 0。
+php_status_once() {
+  local before after
+  before="$(wc -l <"$LOG_FILE" 2>/dev/null || echo 0)"
+  ( cd "$APP_ROOT" && "$PHP_BIN" easyswoole server status ) </dev/null >>"$LOG_FILE" 2>&1 || true
+  after="$(wc -l <"$LOG_FILE" 2>/dev/null || echo 0)"
+  if [ "$after" -gt "$before" ]; then
+    tail -n +$((before + 1)) "$LOG_FILE"
+  fi
+  return 0
+}
+
+# 校验：轮询 status 最多 30s；仍不成功则回退用 pid 文件判断进程存活。
+server_verify() {
+  local waited=0 out pid_file pid
+  while [ "$waited" -lt 30 ]; do
+    out="$(php_status_once)"
+    printf '%s\n' "$out"
+    if [ -n "$out" ] && ! printf '%s' "$out" | grep -qi "connect to server fail"; then
+      echo "server status ok (${waited}s)"
+      return 0
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+
+  pid_file="$(find "$APP_ROOT/Temp" -maxdepth 1 -name 'pid.pid' 2>/dev/null | head -1)"
+  if [ -n "$pid_file" ] && [ -f "$pid_file" ]; then
+    pid="$(tr -d '[:space:]' <"$pid_file")"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      echo "warning: server status 未就绪，但 pid=$pid 存活，视为启动成功"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 [[ -n "$ARTIFACT_PATH" ]] || fail "artifact path is required"
 case "$ARTIFACT_PATH" in
   "$ARTIFACT_ROOT"/*.tar.gz|"$ARTIFACT_ROOT"/*.tgz) ;;
@@ -140,8 +178,9 @@ if ! server_start; then
   exit 1
 fi
 
-if ! server_status; then
-  echo "server status 校验失败，回滚旧 App" >&2
+echo "== 校验服务状态（轮询最多 30s，必要时回退 pid 文件） =="
+if ! server_verify; then
+  echo "server 未就绪，回滚旧 App" >&2
   rollback
   exit 1
 fi
