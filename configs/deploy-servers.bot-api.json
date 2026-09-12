@@ -7,6 +7,14 @@
       "ssh_key": "~/.ssh/server_shell_mcp_prod",
       "profile_id": "bot-api",
       "artifact": "/Users/niklaus/wproject/build/2026-09-12/bot_api-v1.8.0-143-g6e92e9c.tar.gz"
+    },
+    {
+      "name": "bot-api-test",
+      "host": "120.24.168.53",
+      "user": "cmd_mcp",
+      "ssh_key": "~/.ssh/server_shell_mcp_prod",
+      "profile_id": "bot-api",
+      "artifact": "/Users/niklaus/wproject/build/2026-09-12/bot_api-v1.8.0-143-g6e92e9c.tar.gz"
     }
   ]
 }
