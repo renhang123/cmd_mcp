@@ -21,7 +21,11 @@ APP_ROOT="/home/api/mixbot_api"
 APP_DIR="$APP_ROOT/App"
 BACKUP_ROOT="/home/api/backup"
 PHP_BIN="${PHP_BIN:-php}"
-LOG_FILE="${LOG_FILE:-/tmp/bot-api-deploy-$(date +%Y%m%d_%H%M%S).log}"
+
+# 临时日志：mktemp 命名，退出时删掉，不在 /tmp 留垃圾；
+# 同时清理旧版本遗留的 /tmp/bot-api-deploy-*.log。
+rm -f /tmp/bot-api-deploy-*.log 2>/dev/null || true
+LOG_FILE="$(mktemp /tmp/bot-api-deploy.XXXXXX)"
 
 fail() {
   echo "$1" >&2
@@ -120,6 +124,7 @@ command -v tar >/dev/null 2>&1 || fail "tar is not installed"
 WORK_DIR="$(mktemp -d /tmp/bot-api.XXXXXX)"
 cleanup() {
   rm -rf "$WORK_DIR"
+  rm -f "$LOG_FILE"
 }
 trap cleanup EXIT
 
@@ -189,4 +194,3 @@ echo "artifact: $ARTIFACT_PATH"
 echo "backup:  $BACKUP_DIR"
 echo "deployed: $APP_DIR"
 echo "restarted: $PHP_BIN easyswoole server stop -force / start -d"
-echo "log: $LOG_FILE"
