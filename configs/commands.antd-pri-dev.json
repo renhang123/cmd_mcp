@@ -379,6 +379,97 @@
         "include_stderr": false,
         "include_rejection": true
       }
+    },
+    {
+      "id": "read_bot_api_logs",
+      "description": "List bot_api log files under /home/api/mixbot_api/Log or read the tail of one log file for troubleshooting. Arguments: action (required, 'list' shows files with mtime and size, newest first; 'tail' reads one file); file (path under /home/api/mixbot_api/Log, used by tail only, defaults to the logs root which list ignores); lines (integer 1-2000, tail only, default 200); keywords (array of 1-5 plain strings, tail only, case-insensitive OR filter, e.g. [\"error\", \"timeout\"]).",
+      "enabled": true,
+      "risk_level": "low",
+      "access": "read_only",
+      "executable": "/opt/server-shell-mcp/scripts/read-bot-api-log.sh",
+      "argv_template": [
+        {
+          "param": "action"
+        },
+        {
+          "param": "file"
+        },
+        {
+          "param": "lines"
+        },
+        {
+          "repeat": {
+            "param": "keywords",
+            "prefix": "-e"
+          }
+        }
+      ],
+      "working_directory": "/home/cmd_mcp",
+      "environment": {
+        "mode": "minimal",
+        "variables": {
+          "LANG": "C"
+        }
+      },
+      "parameters": {
+        "action": {
+          "type": "enum",
+          "required": true,
+          "values": [
+            "list",
+            "tail"
+          ],
+          "description": "list = show available log files; tail = read the last lines of one log file."
+        },
+        "file": {
+          "type": "path",
+          "required": false,
+          "default": "/home/api/mixbot_api/Log",
+          "description": "Log file to read (tail only). Must stay under /home/api/mixbot_api/Log.",
+          "allowed_roots": [
+            "/home/api/mixbot_api/Log"
+          ],
+          "mode": "read_only"
+        },
+        "lines": {
+          "type": "int",
+          "required": false,
+          "default": 200,
+          "min": 1,
+          "max": 2000,
+          "description": "Number of trailing lines to read (tail only)."
+        },
+        "keywords": {
+          "type": "array",
+          "required": false,
+          "description": "Case-insensitive fixed-string keywords to keep, OR-combined (tail only).",
+          "item": {
+            "type": "string",
+            "min_length": 1,
+            "max_length": 128,
+            "pattern": "^[A-Za-z0-9 _.,:@/()\\[\\]'\"*+?^~!=%-]+$"
+          },
+          "max_items": 5
+        }
+      },
+      "execution": {
+        "timeout_ms": 10000,
+        "max_output_bytes": 32768,
+        "per_command_limit": 2,
+        "global_limit": 4
+      },
+      "output": {
+        "stdout": "text",
+        "stderr": "text",
+        "truncate": true
+      },
+      "audit": {
+        "event_name": "command.read_bot_api_logs",
+        "redact_parameters": [],
+        "include_stdout": false,
+        "include_stderr": false,
+        "include_rejection": true
+      }
     }
   ]
 }
